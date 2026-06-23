@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>얀's 간식레시피북</title>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDocs }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBTj3y7hv93IgTnWHO__5ld91VeFu7WJvk",
+    authDomain: "snack-book-b6e60.firebaseapp.com",
+    projectId: "snack-book-b6e60",
+    storageBucket: "snack-book-b6e60.firebasestorage.app",
+    messagingSenderId: "359685443506",
+    appId: "1:359685443506:web:af825ced968ccc2004deab"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const col = collection(db, "recipes");
+
+  // 전역으로 노출 (아래 일반 스크립트에서 사용)
+  window._fb = {
+    saveOne: async (r) => { await setDoc(doc(db, "recipes", r.id), r); },
+    deleteOne: async (id) => { await deleteDoc(doc(db, "recipes", id)); },
+    listen: (cb) => {
+      onSnapshot(col, (snap) => {
+        const arr = [];
+        snap.forEach(d => arr.push(d.data()));
+        cb(arr);
+      });
+    }
+  };
+  window.dispatchEvent(new Event('fb-ready'));
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    background: #FFFDF2;
+    color: #5C4A1A;
+    max-width: 500px;
+    margin: 0 auto;
+    min-height: 100vh;
+    position: relative;
+  }
+  /* ===== 상단 헤더 ===== */
+  header {
+    background: linear-gradient(135deg, #FFE98A, #FFF3B8);
+    padding: 22px 20px 18px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    box-shadow: 0 2px 8px rgba(220,190,80,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header .title {
+    font-size: 21px;
+    font-weight: 800;
+    color: #8A6D1A;
+    letter-spacing: -0.5px;
+  }
+  header .title small { font-size: 13px; display:block; font-weight:600; color:#A88A2E; margin-top:2px;}
+  .icon-btn {
+    background: #fff;
+    border: none;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    font-size: 20px;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(200,170,60,0.3);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .icon-btn:active { transform: scale(0.9); }
+
+  /* ===== 검색바 ===== */
+  .search-bar {
+    padding: 12px 16px 4px;
+    display: none;
+  }
+  .search-bar.show { display: block; }
+  .search-bar input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #FFE07A;
+    border-radius: 14px;
+    font-size: 15px;
+    background: #FFFCEF;
+    outline: none;
+  }
+
+  /* ===== 목록 ===== */
+  .list { padding: 14px 16px 120px; }
+  .hint {
+    text-align:center; color:#BBA968; font-size:13px;
+    margin: 6px 0 14px;
+  }
+  .recipe-card {
+    background: #fff;
+    border-radius: 18px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    box-shadow: 0 3px 10px rgba(220,190,80,0.15);
+    border: 1.5px solid #FFF0AE;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+  .recipe-card:active { transform: scale(0.98); }
+  .recipe-card.dragging { opacity: 0.5; border: 2px dashed #E5B93C; }
+  .recipe-card .emoji {
+    font-size: 30px;
+    width: 52px; height: 52px;
+    background: #FFF7D2;
+    border-radius: 14px;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink: 0;
+  }
+  .recipe-card .info { flex: 1; min-width:0; }
+  .recipe-card .info h3 { font-size: 17px; font-weight: 700; color:#6B5414; }
+  .recipe-card .info p {
+    font-size: 13px; color:#AD9A5E; margin-top:3px;
+    white-space: nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .recipe-card .handle {
+    font-size: 22px; color: #E0C870; cursor: grab; padding: 4px 2px;
+    touch-action: none;
+  }
+  .empty {
+    text-align:center; padding: 60px 20px; color:#C8B770;
+  }
+  .empty .big { font-size: 60px; margin-bottom: 12px; }
+
+  /* ===== + 버튼 ===== */
+  .fab {
+    position: fixed;
+    bottom: 24px; right: 50%;
+    transform: translateX(234px);
+    width: 62px; height: 62px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #FFD43B, #FFC107);
+    border: none;
+    color: #fff;
+    font-size: 34px;
+    box-shadow: 0 5px 16px rgba(230,180,40,0.5);
+    cursor: pointer;
+    z-index: 60;
+    display:flex; align-items:center; justify-content:center;
+    line-height:1;
+  }
+  .fab:active { transform: translateX(234px) scale(0.9); }
+  @media (max-width:500px){
+    .fab { right: 24px; transform:none; }
+    .fab:active { transform: scale(0.9); }
+  }
+
+  /* ===== 상세/등록 화면 (전체 오버레이) ===== */
+  .screen {
+    position: fixed;
+    top:0; left:50%; transform: translateX(-50%);
+    width:100%; max-width:500px; height:100%;
+    background:#FFFDF2;
+    z-index: 100;
+    overflow-y: auto;
+    display:none;
+    flex-direction: column;
+  }
+  .screen.show { display:flex; }
+  .form-body{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  .screen-head {
+    background: linear-gradient(135deg, #FFE98A, #FFF3B8);
+    padding: 18px 16px;
+    display:flex; align-items:center; gap:12px;
+    position: sticky; top:0; z-index:5;
+    box-shadow: 0 2px 8px rgba(220,190,80,0.2);
+  }
+  .back-btn {
+    background:#fff; border:none; width:42px; height:42px;
+    border-radius:50%; font-size:20px; cursor:pointer;
+    box-shadow:0 2px 5px rgba(200,170,60,0.3);
+  }
+  .screen-head .h-title { font-size:18px; font-weight:800; color:#8A6D1A; flex:1;}
+
+  /* 상세 보기 */
+  .detail-body { padding: 22px 22px 60px; }
+  .detail-body .r-emoji { font-size: 54px; text-align:center; margin-bottom:6px;}
+  .detail-body h1 { font-size:26px; text-align:center; color:#6B5414; margin-bottom:22px; font-weight:800;}
+  .sec-label {
+    display:inline-block;
+    background:#FFE07A; color:#7A5E12;
+    font-size:14px; font-weight:700;
+    padding:5px 14px; border-radius:20px;
+    margin-bottom:10px;
+  }
+  .sec-box {
+    background:#fff; border-radius:16px; padding:16px 18px;
+    margin-bottom:20px; border:1.5px solid #FFF0AE;
+    box-shadow:0 2px 8px rgba(220,190,80,0.12);
+    line-height:1.7; font-size:15px; white-space:pre-wrap;
+  }
+  .step-item { display:flex; gap:12px; margin-bottom:16px; align-items:flex-start;}
+  .step-item:last-child{margin-bottom:0;}
+  .step-num {
+    background:#FFD43B; color:#fff; font-weight:800;
+    min-width:28px; height:28px; border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px; flex-shrink:0;
+  }
+  .step-content { flex:1; }
+  .step-content img { width:100%; border-radius:12px; margin-top:8px; display:block;}
+  .detail-actions{ display:flex; gap:10px; margin-top:10px;}
+  .detail-actions button{
+    flex:1; padding:13px; border-radius:14px; border:none;
+    font-size:15px; font-weight:700; cursor:pointer;
+  }
+  .btn-edit{ background:#FFE07A; color:#7A5E12;}
+  .btn-del{ background:#FFE0E0; color:#C75050;}
+
+  /* 등록/수정 폼 */
+  .form-body{ padding:20px 18px 120px;}
+  .field { margin-bottom:20px;}
+  .field label{ display:block; font-size:15px; font-weight:700; color:#7A5E12; margin-bottom:8px;}
+  .field input[type=text], .field textarea{
+    width:100%; padding:13px 15px; border:2px solid #FFE898;
+    border-radius:14px; font-size:15px; background:#FFFCEF;
+    outline:none; font-family:inherit; resize:vertical;
+  }
+  .field textarea{ min-height:90px; line-height:1.6;}
+  .emoji-pick{ display:flex; flex-wrap:wrap; gap:8px;}
+  .emoji-pick span{
+    font-size:24px; width:46px;height:46px; border-radius:12px;
+    display:flex;align-items:center;justify-content:center;
+    background:#FFF7D2; cursor:pointer; border:2px solid transparent;
+  }
+  .emoji-pick span.sel{ border-color:#FFC107; background:#FFEFA8;}
+
+  /* 만드는 순서 - 단계별 */
+  .step-edit{
+    background:#fff; border:1.5px solid #FFE898; border-radius:14px;
+    padding:12px; margin-bottom:12px;
+  }
+  .step-edit-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;}
+  .step-edit-head b{ color:#8A6D1A; font-size:14px;}
+  .step-del-btn{ background:#FFE0E0; color:#C75050; border:none; border-radius:10px; padding:5px 10px; font-size:13px; cursor:pointer; font-weight:700;}
+  .step-edit textarea{ width:100%; padding:10px; border:1.5px solid #FFEFB8; border-radius:10px; font-size:14px; min-height:54px; resize:vertical; font-family:inherit; outline:none; background:#FFFEF8;}
+  .photo-row{ margin-top:8px; }
+  .photo-btn{
+    background:#FFF3B8; color:#8A6D1A; border:1.5px dashed #E5C84C;
+    border-radius:10px; padding:9px 14px; font-size:13px; font-weight:700;
+    cursor:pointer; display:inline-flex; align-items:center; gap:6px;
+  }
+  .photo-row img{ width:100%; border-radius:10px; margin-top:8px; display:block;}
+  .photo-remove{ background:#FFE0E0; color:#C75050; border:none; border-radius:8px; padding:4px 9px; font-size:12px; cursor:pointer; margin-top:6px; font-weight:700;}
+  .add-step-btn{
+    width:100%; padding:13px; background:#FFF3B8; color:#8A6D1A;
+    border:2px dashed #E5C84C; border-radius:14px; font-size:14px;
+    font-weight:700; cursor:pointer; margin-bottom:8px;
+  }
+  .save-bar{
+    position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+    width:100%; max-width:500px; padding:14px 18px;
+    background:#FFFDF2; border-top:1.5px solid #FFEFB8;
+  }
+  .save-btn{
+    width:100%; padding:16px; background:linear-gradient(135deg,#FFD43B,#FFC107);
+    color:#fff; border:none; border-radius:16px; font-size:17px; font-weight:800;
+    cursor:pointer; box-shadow:0 4px 12px rgba(230,180,40,0.4);
+  }
+  .save-btn:active{ transform:scale(0.98);}
+</style>
+</head>
+<body>
+
+<!-- 메인 화면 -->
+<header>
+  <div class="title">🍪 얀's 간식레시피북<small>나만의 달콤한 기록</small></div>
+  <button class="icon-btn" onclick="toggleSearch()">🔍</button>
+</header>
+
+<div class="search-bar" id="searchBar">
+  <input type="text" id="searchInput" placeholder="간식 이름이나 재료를 검색해보세요" oninput="renderList()">
+</div>
+
+<div class="list" id="list"></div>
+
+<button class="fab" onclick="openForm()">＋</button>
+
+<!-- 상세 보기 화면 -->
+<div class="screen" id="detailScreen">
+  <div class="screen-head">
+    <button class="back-btn" onclick="closeDetail()">←</button>
+    <div class="h-title">레시피</div>
+  </div>
+  <div class="detail-body" id="detailBody"></div>
+</div>
+
+<!-- 등록/수정 화면 -->
+<div class="screen" id="formScreen">
+  <div class="screen-head">
+    <button class="back-btn" onclick="closeForm()">←</button>
+    <div class="h-title" id="formTitle">새 레시피 등록</div>
+  </div>
+  <div class="form-body">
+    <div class="field">
+      <label>어떤 간식인가요? (이모지 골라봐!)</label>
+      <div class="emoji-pick" id="emojiPick"></div>
+    </div>
+    <div class="field">
+      <label>🍰 레시피 이름</label>
+      <input type="text" id="fName" placeholder="예) 딸기 우유 푸딩">
+    </div>
+    <div class="field">
+      <label>🧺 재료</label>
+      <textarea id="fIngredients" placeholder="예) 딸기 5개&#10;우유 200ml&#10;설탕 2스푼"></textarea>
+    </div>
+    <div class="field">
+      <label>👩‍🍳 만드는 순서 (한 줄에 하나씩 적으면 1. 2. 3. 번호가 붙어요!)</label>
+      <textarea id="fSteps" placeholder="딸기를 깨끗이 씻어 잘게 잘라요&#10;냄비에 우유와 설탕을 넣고 데워요&#10;젤라틴을 넣고 컵에 부어요"></textarea>
+    </div>
+    <div class="field">
+      <label>📷 사진 (필요할 때 추가해요)</label>
+      <div id="photosWrap"></div>
+      <label class="photo-btn">📷 사진 추가<input type="file" accept="image/*" style="display:none" onchange="addPhoto(this)"></label>
+    </div>
+  </div>
+  <div class="save-bar">
+    <button class="save-btn" onclick="saveRecipe()">💾 저장하기</button>
+  </div>
+</div>
+
+<script>
+  // ===== 데이터 (메모리에 저장) =====
+  let recipes = [];
+  let editingId = null;
+  let currentDetailId = null;
+  let selectedEmoji = '🍪';
+  let photos = []; // 사진 목록
+
+  const EMOJIS = ['🍪','🧁','🍰','🍮','🥞','🍩','🍓','🍫','🥧','🍬','🍦','🧃','🥨','🍯','🫐'];
+
+  // ===== 목록 그리기 =====
+  function renderList(){
+    const kw = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+    const list = document.getElementById('list');
+    let data = recipes;
+    if(kw){
+      data = recipes.filter(r =>
+        r.name.toLowerCase().includes(kw) ||
+        r.ingredients.toLowerCase().includes(kw) ||
+        (r.steps||'').toLowerCase().includes(kw)
+      );
+    }
+    if(recipes.length === 0){
+      list.innerHTML = `<div class="empty"><div class="big">🍩</div>아직 레시피가 없어요!<br>오른쪽 아래 ＋ 버튼을 눌러<br>첫 간식 레시피를 등록해봐요 😊</div>`;
+      return;
+    }
+    if(data.length === 0){
+      list.innerHTML = `<div class="empty"><div class="big">🔍</div>"${kw}" 검색 결과가 없어요</div>`;
+      return;
+    }
+    let html = `<div class="hint">👆 손잡이(≡)를 끌어서 순서를 바꿀 수 있어요</div>`;
+    data.forEach(r => {
+      const preview = r.ingredients.replace(/\n/g,', ').slice(0,30);
+      html += `
+      <div class="recipe-card" data-id="${r.id}" draggable="false">
+        <div class="emoji">${r.emoji}</div>
+        <div class="info" onclick="openDetail('${r.id}')">
+          <h3>${escapeHtml(r.name)}</h3>
+          <p>${escapeHtml(preview) || '맛있는 간식 🍴'}</p>
+        </div>
+        <div class="handle" data-id="${r.id}">≡</div>
+      </div>`;
+    });
+    list.innerHTML = html;
+    if(!kw) setupDrag();
+  }
+
+  // ===== 드래그로 순서 변경 (터치 지원) =====
+  function setupDrag(){
+    const handles = document.querySelectorAll('.handle');
+    handles.forEach(h => {
+      h.addEventListener('touchstart', startTouchDrag, {passive:false});
+      h.addEventListener('mousedown', startMouseDrag);
+    });
+  }
+  let dragId = null, dragCard = null;
+  function startTouchDrag(e){ e.preventDefault(); dragId = e.target.dataset.id; beginDrag(); 
+    document.addEventListener('touchmove', onTouchMove, {passive:false});
+    document.addEventListener('touchend', endDrag);
+  }
+  function startMouseDrag(e){ e.preventDefault(); dragId = e.target.dataset.id; beginDrag();
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', endDrag);
+  }
+  function beginDrag(){
+    dragCard = document.querySelector(`.recipe-card[data-id="${dragId}"]`);
+    if(dragCard) dragCard.classList.add('dragging');
+  }
+  function moveLogic(y){
+    const cards = [...document.querySelectorAll('.recipe-card:not(.dragging)')];
+    const after = cards.find(c => {
+      const box = c.getBoundingClientRect();
+      return y < box.top + box.height/2;
+    });
+    const list = document.getElementById('list');
+    if(after) list.insertBefore(dragCard, after);
+    else list.appendChild(dragCard);
+  }
+  function onTouchMove(e){ e.preventDefault(); moveLogic(e.touches[0].clientY); }
+  function onMouseMove(e){ moveLogic(e.clientY); }
+  function endDrag(){
+    if(dragCard) dragCard.classList.remove('dragging');
+    // 새 순서 반영
+    const ids = [...document.querySelectorAll('.recipe-card')].map(c=>c.dataset.id);
+    recipes.sort((a,b)=> ids.indexOf(a.id) - ids.indexOf(b.id));
+    dragId=null; dragCard=null;
+    document.removeEventListener('touchmove', onTouchMove);
+    document.removeEventListener('touchend', endDrag);
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', endDrag);
+    save();
+  }
+
+  // ===== 검색 토글 =====
+  function toggleSearch(){
+    const sb = document.getElementById('searchBar');
+    sb.classList.toggle('show');
+    if(sb.classList.contains('show')) document.getElementById('searchInput').focus();
+    else { document.getElementById('searchInput').value=''; renderList(); }
+  }
+
+  // ===== 상세 보기 =====
+  function openDetail(id){
+    const r = recipes.find(x=>x.id===id);
+    if(!r) return;
+    currentDetailId = id;
+    const stepLines = (r.steps||'').split('\n').map(l=>l.trim()).filter(l=>l);
+    let stepsHtml = '';
+    stepLines.forEach((line,i)=>{
+      stepsHtml += `<div class="step-item">
+        <div class="step-num">${i+1}</div>
+        <div class="step-content">${escapeHtml(line)}</div>
+      </div>`;
+    });
+    let photosHtml = '';
+    (r.photos||[]).forEach(p=>{ photosHtml += `<img src="${p}" style="width:100%;border-radius:12px;margin-bottom:10px;display:block;">`; });
+    document.getElementById('detailBody').innerHTML = `
+      <div class="r-emoji">${r.emoji}</div>
+      <h1>${escapeHtml(r.name)}</h1>
+      <span class="sec-label">🧺 재료</span>
+      <div class="sec-box">${escapeHtml(r.ingredients)||'-'}</div>
+      <span class="sec-label">👩‍🍳 만드는 순서</span>
+      <div class="sec-box">${stepsHtml||'-'}</div>
+      ${photosHtml?`<span class="sec-label">📷 사진</span><div class="sec-box">${photosHtml}</div>`:''}
+      <div class="detail-actions">
+        <button class="btn-edit" onclick="openForm('${r.id}')">✏️ 수정</button>
+        <button class="btn-del" onclick="delRecipe('${r.id}')">🗑️ 삭제</button>
+      </div>`;
+    document.getElementById('detailScreen').classList.add('show');
+  }
+  function closeDetail(){ document.getElementById('detailScreen').classList.remove('show'); renderList();}
+
+  // ===== 등록/수정 폼 =====
+  function openForm(id){
+    editingId = id || null;
+    photos = [];
+    // 이모지 고르기
+    const ep = document.getElementById('emojiPick');
+    ep.innerHTML = EMOJIS.map(e=>`<span onclick="pickEmoji('${e}',this)">${e}</span>`).join('');
+    if(editingId){
+      const r = recipes.find(x=>x.id===editingId);
+      document.getElementById('formTitle').textContent='레시피 수정';
+      document.getElementById('fName').value = r.name;
+      document.getElementById('fIngredients').value = r.ingredients;
+      document.getElementById('fSteps').value = r.steps || '';
+      selectedEmoji = r.emoji;
+      photos = (r.photos||[]).slice();
+    } else {
+      document.getElementById('formTitle').textContent='새 레시피 등록';
+      document.getElementById('fName').value='';
+      document.getElementById('fIngredients').value='';
+      document.getElementById('fSteps').value='';
+      selectedEmoji = '🍪';
+    }
+    // 이모지 선택 표시
+    [...ep.children].forEach(s=>{ if(s.textContent===selectedEmoji) s.classList.add('sel'); });
+    renderPhotos();
+    document.getElementById('detailScreen').classList.remove('show');
+    document.getElementById('formScreen').classList.add('show');
+    document.getElementById('formScreen').scrollTop=0;
+  }
+  function closeForm(){ document.getElementById('formScreen').classList.remove('show'); renderList();}
+  function pickEmoji(e,el){
+    selectedEmoji=e;
+    [...el.parentElement.children].forEach(s=>s.classList.remove('sel'));
+    el.classList.add('sel');
+  }
+
+  // 사진 렌더링
+  function renderPhotos(){
+    const wrap = document.getElementById('photosWrap');
+    wrap.innerHTML = photos.map((p,i)=>`
+      <div class="photo-row">
+        <img src="${p}">
+        <button class="photo-remove" onclick="removePhoto(${i})">사진 빼기</button>
+      </div>`).join('');
+  }
+  function removePhoto(i){ photos.splice(i,1); renderPhotos(); }
+  function addPhoto(input){
+    const file = input.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const canvas = document.createElement('canvas');
+        const max = 800;
+        let {width,height}=img;
+        if(width>max){ height=height*max/width; width=max; }
+        canvas.width=width; canvas.height=height;
+        canvas.getContext('2d').drawImage(img,0,0,width,height);
+        photos.push(canvas.toDataURL('image/jpeg',0.7));
+        renderPhotos();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+    input.value='';
+  }
+
+  // ===== 저장 =====
+  function saveRecipe(){
+    const name = document.getElementById('fName').value.trim();
+    const ingredients = document.getElementById('fIngredients').value.trim();
+    const stepsText = document.getElementById('fSteps').value.trim();
+    if(!name){ alert('레시피 이름을 적어주세요! 🍰'); return; }
+    if(editingId){
+      const r = recipes.find(x=>x.id===editingId);
+      r.name=name; r.ingredients=ingredients; r.emoji=selectedEmoji; r.steps=stepsText; r.photos=photos.slice();
+    } else {
+      recipes.unshift({
+        id: 'r'+Date.now(),
+        name, ingredients, emoji:selectedEmoji, steps:stepsText, photos:photos.slice()
+      });
+    }
+    save();
+    closeForm();
+  }
+  async function delRecipe(id){
+    if(!confirm('이 레시피를 삭제할까요?')) return;
+    recipes = recipes.filter(x=>x.id!==id);
+    if(window._fb){
+      try{ await window._fb.deleteOne(id); }catch(e){ console.error(e); }
+    }
+    renderList();
+    closeDetail();
+  }
+
+  // ===== 저장 (Firebase) =====
+  async function save(){
+    // 현재 순서를 order 값으로 매겨서 각 레시피에 저장
+    recipes.forEach((r,i)=>{ r.order = i; });
+    if(window._fb){
+      try{
+        for(const r of recipes){ await window._fb.saveOne(r); }
+      }catch(e){ console.error(e); }
+    }
+  }
+  async function saveOne(r){
+    if(window._fb){
+      try{ await window._fb.saveOne(r); }catch(e){ console.error(e); }
+    }
+  }
+
+  // Firebase에서 실시간으로 레시피 받아오기
+  function startListening(){
+    if(!window._fb) return;
+    window._fb.listen((arr)=>{
+      // order 순서대로 정렬 (order 없으면 뒤로)
+      arr.sort((a,b)=> (a.order??9999) - (b.order??9999));
+      recipes = arr;
+      // 상세/폼 화면 열려있지 않을 때만 목록 새로고침
+      if(!document.getElementById('formScreen').classList.contains('show')){
+        renderList();
+      }
+    });
+  }
+
+  function escapeHtml(t){
+    return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // 시작: Firebase 준비되면 듣기 시작
+  recipes = [];
+  renderList();
+  if(window._fb){ startListening(); }
+  else { window.addEventListener('fb-ready', startListening); }
+</script>
+</body>
+</html>
